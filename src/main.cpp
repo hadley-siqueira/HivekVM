@@ -5,7 +5,8 @@
 int main(int argc, char* argv[]) {
     HivekVM::HivekVM vm;
 
-    vm.load_program("prog.bin");
+    vm.load_program("out.bin");
+    vm.run();
     vm.print_registers();
 
     return 0;
