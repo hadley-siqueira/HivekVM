@@ -13,11 +13,37 @@ HivekVM::HivekVM::HivekVM() {
     ip = 0;
 
     for (int i = 0; i < N_REGISTERS; ++i) {
-        regs[i] = i;
+        regs[i] = 0;
     }
 
     stack = new uint8_t[STACK_DEFAULT_SIZE];
     regs[REG_SP] = (uint64_t) stack + STACK_DEFAULT_SIZE - 8;
+
+    imap[0x04190001] = "    addi %25, %0, 1";
+    imap[0x04040005] = "    addi a0, %0, 5";
+    imap[0x1c000005] = "    jal fib";
+    imap[0x0000007f] = "    halt";
+    imap[0x00000000] = "    add %0, %0, %0";
+    imap[0x00000000] = "    add %0, %0, %0";
+    imap[0x00000000] = "    add %0, %0, %0";
+    imap[0x18990003] = "    blt %25, a0, recurse";
+    imap[0x00801000] = "    add v0, a0, %0";
+    imap[0x00000005] = "    jr";
+    imap[0x07bdffe8] = "    addi sp, sp, -24";
+    imap[0x0fa00000] = "    sd ra, sp, 0";
+    imap[0x0fa40008] = "    sd a0, sp, 8";
+    imap[0x0484ffff] = "    addi a0, a0, -1";
+    imap[0x1ffffff9] = "    jal fib";
+    imap[0x0fa20010] = "    sd v0, sp, 16";
+    imap[0x0ba40008] = "    ld a0, sp, 8";
+    imap[0x0484fffe] = "    addi a0, a0, -2";
+    imap[0x1ffffff5] = "    jal fib";
+    imap[0x0ba80010] = "    ld t0, sp, 16";
+    imap[0x00481000] = "    add v0, v0, t0";
+    imap[0x0ba00000] = "    ld ra, sp, 0";
+    imap[0x07bd0018] = "    addi sp, sp, 24";
+    imap[0x00000005] = "    jr ";
+
 }
 
 HivekVM::HivekVM::~HivekVM() {
@@ -66,11 +92,19 @@ void HivekVM::HivekVM::print_registers() {
         printf("r[%02i] = 0x%016" PRIx64 "    ", i + 2, regs[i + 2]);
         printf("r[%02i] = 0x%016" PRIx64 "\n", i + 3, regs[i + 3]);
     }
+
+    printf("stack:\n");
+
+    for (int i = 0; i < 20; ++i) {
+        uint64_t addr = (uint64_t) stack + STACK_DEFAULT_SIZE - 8 - i * 8;
+        uint64_t v = read64(addr);
+        printf("sp[0x%016" PRIx64 "] = 0x%016" PRIx64 "\n", addr, v);
+    }
 }
 
 void HivekVM::HivekVM::fetch_instruction() {
     instruction = read32u(ip);
-    printf("instruction = %08x\n", instruction);
+    printf("instruction = %08x %s\n", instruction, imap[instruction].c_str());
 }
 
 void HivekVM::HivekVM::execute_instruction() {
@@ -85,6 +119,8 @@ void HivekVM::HivekVM::execute_instruction() {
         execute_ri();
         break;
     }
+
+    print_registers();
 }
 
 void HivekVM::HivekVM::execute_rr() {
@@ -149,6 +185,7 @@ void HivekVM::HivekVM::execute_ri() {
     int rb = get_rb();
     uint64_t immd16 = get_immd16();
     uint64_t immd26 = get_immd26();
+    uint64_t tmp;
 
     switch (opcode) {
     case OPCODE_ADDI:
@@ -157,11 +194,15 @@ void HivekVM::HivekVM::execute_ri() {
         break;
 
     case OPCODE_LOAD_D:
-        regs[rb] = read64(regs[ra] + immd16);
+        tmp = read64(regs[ra] + immd16);
+        regs[rb] = tmp;
+
+        printf("ld a = %016" PRIx64 " b = %016" PRIx64 "\n", regs[ra] + immd16, tmp);
         ip += 4;
         break;
 
     case OPCODE_STORE_D:
+        printf("ld a = %016" PRIx64 " b = %016" PRIx64 " ra = %i; rb = %i\n", regs[ra] + immd16, regs[rb], ra, rb);
         write64(regs[ra] + immd16, regs[rb]);
         ip += 4;
         break;
@@ -185,8 +226,6 @@ void HivekVM::HivekVM::execute_ri() {
         break;
 
     case OPCODE_BLT:
-        ip = ip;
-        printf("blt %i %i %i\n", (int64_t) regs[rb], (int64_t) regs[ra], (int64_t) regs[rb] < (int64_t) regs[ra]);
         if ((int64_t) regs[rb] < (int64_t) regs[ra]) {
             ip = ip + (int64_t) immd16 * 4;
         } else {
@@ -196,6 +235,8 @@ void HivekVM::HivekVM::execute_ri() {
         break;
 
     case OPCODE_JAL:
+        printf("ip = %016" PRIx64 ", immd26 = %016" PRIx64 " ", ip, immd26);
+        printf("immd26x4 = %016" PRIx64 ", targ = %016" PRIx64 " ", immd26 * 4, ip + (int64_t) immd26 * 4);
         regs[REG_RA] = ip + 4;
         ip = ip + (int64_t) immd26 * 4;
         break;
@@ -216,7 +257,7 @@ uint64_t HivekVM::HivekVM::read64(uint64_t address) {
     uint64_t* ptr = (uint64_t*) address;
     uint64_t value = *ptr;
 
-    return  ((value & 0xFF00000000000000ull) >> 56)
+    value = ((value & 0xFF00000000000000ull) >> 56)
              | ((value & 0x00FF000000000000ull) >> 40)
              | ((value & 0x0000FF0000000000ull) >> 24)
              | ((value & 0x000000FF00000000ull) >>  8)
@@ -224,6 +265,9 @@ uint64_t HivekVM::HivekVM::read64(uint64_t address) {
              | ((value & 0x0000000000FF0000ull) << 24)
              | ((value & 0x000000000000FF00ull) << 40)
              | ((value & 0x00000000000000FFull) << 56);
+
+    //printf("HERE READ v = %016" PRIx64 "; addr = %016" PRIx64 "\n", value, address);
+    return value;
 }
 
 void HivekVM::HivekVM::write32(uint64_t address, uint32_t data) {
@@ -235,6 +279,7 @@ void HivekVM::HivekVM::write32(uint64_t address, uint32_t data) {
 void HivekVM::HivekVM::write64(uint64_t address, uint64_t value) {
     uint64_t* ptr = (uint64_t*) address;
 
+    //printf("werbf v = %016" PRIx64 "\n", value);
     value = ((value & 0xFF00000000000000ull) >> 56)
              | ((value & 0x00FF000000000000ull) >> 40)
              | ((value & 0x0000FF0000000000ull) >> 24)
@@ -244,7 +289,7 @@ void HivekVM::HivekVM::write64(uint64_t address, uint64_t value) {
              | ((value & 0x000000000000FF00ull) << 40)
              | ((value & 0x00000000000000FFull) << 56);
 
-    *ptr = value;
+    *ptr = value; //printf("HERE WRITE v = %016" PRIx64 "; addr = %016" PRIx64 "\n", value, address);
 }
 
 int HivekVM::HivekVM::get_opcode() {
@@ -268,7 +313,7 @@ uint64_t HivekVM::HivekVM::get_immd16() {
 
     if (instruction & 0x08000) {
         res = ~0;
-        res << 16;
+        res = res << 16;
         res = res | (instruction & 0x0ffff);
     } else {
         res = instruction & 0x0ffff;

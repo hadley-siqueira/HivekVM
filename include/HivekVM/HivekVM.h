@@ -2,6 +2,7 @@
 #define HIVEKVM_H
 
 #include <cstdint>
+#include <map>
 
 #include "HivekDefs.h"
 
@@ -46,6 +47,8 @@ namespace HivekVM {
         uint32_t instruction;
         uint32_t* program;
         uint8_t* stack;
+
+        std::map<int, std::string> imap;
     };
 }
 
