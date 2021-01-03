@@ -43,7 +43,6 @@ HivekVM::HivekVM::HivekVM() {
     imap[0x0ba00000] = "    ld ra, sp, 0";
     imap[0x07bd0018] = "    addi sp, sp, 24";
     imap[0x00000005] = "    jr ";
-
 }
 
 HivekVM::HivekVM::~HivekVM() {
@@ -136,19 +135,138 @@ void HivekVM::HivekVM::execute() {
         break;
     }
 
-    print_registers();
+    // better to always set to zero than to make a lot of if else. Its cheaper
+    regs[0] = 0;
 }
 
 void HivekVM::HivekVM::execute16() {
-
+    printf("invalid 16 bit instruction\n");
+    exit(0);
 }
 
 void HivekVM::HivekVM::execute24() {
+    int opcode = (instruction >> 23) & 0x3f;
+    int ra = (instruction >> 18) & 0x1f;
+    int rb = (instruction >> 13) & 0x1f;
+    int rc = (instruction >> 8) & 0x1f;
 
+    switch (opcode) {
+    case OPCODE_24_ADD:
+        regs[rc] = regs[ra] + regs[rb];
+        ip += 3;
+        break;
+
+    case OPCODE_24_SUB:
+        regs[rc] = regs[ra] - regs[rb];
+        ip += 3;
+        break;
+
+    case OPCODE_24_AND:
+        regs[rc] = regs[ra] & regs[rb];
+        ip += 3;
+        break;
+
+    case OPCODE_24_OR:
+        regs[rc] = regs[ra] | regs[rb];
+        ip += 3;
+        break;
+
+    case OPCODE_24_XOR:
+        regs[rc] = regs[ra] ^ regs[rb];
+        ip += 3;
+        break;
+    }
 }
 
 void HivekVM::HivekVM::execute32() {
+    int opcode = (instruction >> 23) & 0x3f;
+    int ra;
+    int rb;
+    int rc;
+    uint64_t immd13;
+    uint64_t immd23;
 
+    // jal
+    if (opcode == 0b111010 || opcode == 0b111011) {
+
+    } else {
+        ra = (instruction >> 18) & 0x1f;
+        rb = (instruction >> 13) & 0x1f;
+        rc = (instruction >> 8) & 0x1f;
+        immd13 = instruction & 0x1000 ? 0xffffffffffffe000 | (instruction & 0x1fff) : instruction & 0x1fff;
+
+        switch (opcode) {
+        case OPCODE_32_ADDI:
+            regs[rb] = regs[ra] + immd13;
+            ip += 4;
+            break;
+
+        case OPCODE_32_ANDI:
+            regs[rb] = regs[ra] & immd13;
+            ip += 4;
+            break;
+
+        case OPCODE_32_ORI:
+            regs[rb] = regs[ra] | immd13;
+            ip += 4;
+            break;
+
+        case OPCODE_32_XORI:
+            regs[rb] = regs[ra] ^ immd13;
+            ip += 4;
+            break;
+
+        // memory
+        case OPCODE_32_LD:
+            regs[rb] = read64(regs[ra] + immd13);
+            ip += 4;
+            break;
+
+        case OPCODE_32_SD:
+            write64(regs[ra] + immd13, regs[rb]);
+            ip += 4;
+            break;
+
+        // branches
+        case OPCODE_32_BEQ:
+            if (regs[ra] == regs[rb]) {
+                ip = ip + (int64_t) immd13;
+            } else {
+                ip += 4;
+            }
+
+            break;
+
+        case OPCODE_32_BNE:
+            if (regs[ra] != regs[rb]) {
+                ip = ip + (int64_t) immd13;
+            } else {
+                ip += 4;
+            }
+
+            break;
+
+        case OPCODE_32_BLT:
+            if ((int64_t) regs[rb] < (int64_t) regs[ra]) {
+                ip = ip + (int64_t) immd13;
+            } else {
+                ip += 4;
+            }
+
+            break;
+
+        // jumps
+        case OPCODE_32_JAL:
+            immd23 = instruction & 0x400000 ? 0xffffffffff800000 | (instruction & 0x7fffff) : instruction & 0x7fffff;
+            regs[REG_RA] = ip + 4;
+            ip = ip + (int64_t) immd23;
+            break;
+
+
+        default:
+            break;
+        }
+    }
 }
 
 void HivekVM::HivekVM::execute_rr() {
@@ -159,31 +277,6 @@ void HivekVM::HivekVM::execute_rr() {
     int tmp;
 
     switch (opcode) {
-    case OPCODE_ADD:
-        regs[rc] = regs[ra] + regs[rb];
-        ip += 4;
-        break;
-
-    case OPCODE_SUB:
-        regs[rc] = regs[ra] - regs[rb];
-        ip += 4;
-        break;
-
-    case OPCODE_AND:
-        regs[rc] = regs[ra] & regs[rb];
-        ip += 4;
-        break;
-
-    case OPCODE_OR:
-        regs[rc] = regs[ra] | regs[rb];
-        ip += 4;
-        break;
-
-    case OPCODE_XOR:
-        regs[rc] = regs[ra] ^ regs[rb];
-        ip += 4;
-        break;
-
     case OPCODE_JR:
         ip = regs[REG_RA];
         break;
@@ -203,77 +296,6 @@ void HivekVM::HivekVM::execute_rr() {
     default:
         break;
     }
-
-    regs[0] = 0;
-}
-
-void HivekVM::HivekVM::execute_ri() {
-    int opcode = get_opcode();
-    int ra = get_ra();
-    int rb = get_rb();
-    uint64_t immd16 = get_immd16();
-    uint64_t immd26 = get_immd26();
-    uint64_t tmp;
-
-    switch (opcode) {
-    case OPCODE_ADDI:
-        regs[rb] = regs[ra] + immd16;
-        ip += 4;
-        break;
-
-    case OPCODE_LOAD_D:
-        tmp = read64(regs[ra] + immd16);
-        regs[rb] = tmp;
-
-        printf("ld a = %016" PRIx64 " b = %016" PRIx64 "\n", regs[ra] + immd16, tmp);
-        ip += 4;
-        break;
-
-    case OPCODE_STORE_D:
-        printf("ld a = %016" PRIx64 " b = %016" PRIx64 " ra = %i; rb = %i\n", regs[ra] + immd16, regs[rb], ra, rb);
-        write64(regs[ra] + immd16, regs[rb]);
-        ip += 4;
-        break;
-
-    case OPCODE_BEQ:
-        if (regs[ra] == regs[rb]) {
-            ip = ip + (int64_t) immd16 * 4;
-        } else {
-            ip += 4;
-        }
-
-        break;
-
-    case OPCODE_BNE:
-        if (regs[ra] != regs[rb]) {
-            ip = ip + (int64_t) immd16 * 4;
-        } else {
-            ip += 4;
-        }
-
-        break;
-
-    case OPCODE_BLT:
-        if ((int64_t) regs[rb] < (int64_t) regs[ra]) {
-            ip = ip + (int64_t) immd16 * 4;
-        } else {
-            ip += 4;
-        }
-
-        break;
-
-    case OPCODE_JAL:
-        printf("ip = %016" PRIx64 ", immd26 = %016" PRIx64 " ", ip, immd26);
-        printf("immd26x4 = %016" PRIx64 ", targ = %016" PRIx64 " ", immd26 * 4, ip + (int64_t) immd26 * 4);
-        regs[REG_RA] = ip + 4;
-        ip = ip + (int64_t) immd26 * 4;
-        break;
-
-    default:
-        break;
-    }
-
-    regs[0] = 0;
 }
 
 uint32_t HivekVM::HivekVM::read32u(uint64_t address) {

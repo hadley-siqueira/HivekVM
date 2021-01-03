@@ -28,7 +28,6 @@ namespace HivekVM {
         void execute24();
         void execute32();
         void execute_rr();
-        void execute_ri();
 
         // memory access
         uint32_t read32u(uint64_t address);
@@ -43,8 +42,6 @@ namespace HivekVM {
         int get_rc();
         uint64_t get_immd16();
         uint64_t get_immd26();
-
-
 
     private:
         uint64_t regs[N_REGISTERS];
