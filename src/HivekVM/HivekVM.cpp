@@ -53,8 +53,8 @@ HivekVM::HivekVM::~HivekVM() {
 
 void HivekVM::HivekVM::run() {
     while (true) {
-        fetch_instruction();
-        execute_instruction();
+        fetch();
+        execute();
     }
 }
 
@@ -68,14 +68,14 @@ void HivekVM::HivekVM::load_program(const char* path) {
     std::ifstream file(path, std::ios::binary);
 
     file.seekg(0, std::ios::end);
-    int sz = file.tellg() / sizeof(uint32_t);
+    int sz = file.tellg();
     file.seekg(0, std::ios::beg);
 
-    program = new uint32_t[sz];
-    ptr = (uint8_t*) program;
+    program = new uint8_t[sz];
+    ptr = program;
     ip = (uint64_t) program;
 
-    for (int i = 0; i < sz * sizeof(uint32_t); ++i) {
+    for (int i = 0; i < sz; ++i) {
         *ptr = file.get();
         ++ptr;
     }
@@ -92,7 +92,9 @@ void HivekVM::HivekVM::print_registers() {
         printf("r[%02i] = 0x%016" PRIx64 "    ", i + 2, regs[i + 2]);
         printf("r[%02i] = 0x%016" PRIx64 "\n", i + 3, regs[i + 3]);
     }
+}
 
+void HivekVM::HivekVM::print_stack() {
     printf("stack:\n");
 
     for (int i = 0; i < 20; ++i) {
@@ -102,25 +104,51 @@ void HivekVM::HivekVM::print_registers() {
     }
 }
 
-void HivekVM::HivekVM::fetch_instruction() {
+void HivekVM::HivekVM::fetch() {
     instruction = read32u(ip);
     printf("instruction = %08x %s\n", instruction, imap[instruction].c_str());
 }
 
-void HivekVM::HivekVM::execute_instruction() {
-    int opcode = get_opcode();
+void HivekVM::HivekVM::execute() {
+    int ikind = (instruction >> 29) & 0x7;
 
-    switch (opcode) {
-    case 0:
-        execute_rr();
+    switch (ikind) {
+    case 0b000:
+    case 0b001:
+    case 0b010:
+    case 0b011:
+    case 0b100:
+    case 0b101:
+        execute16();
+        break;
+
+    case 0b110:
+        execute24();
+        break;
+
+    case 0b111:
+        execute32();
         break;
 
     default:
-        execute_ri();
+        printf("invalid ikind\n");
+        exit(0);
         break;
     }
 
     print_registers();
+}
+
+void HivekVM::HivekVM::execute16() {
+
+}
+
+void HivekVM::HivekVM::execute24() {
+
+}
+
+void HivekVM::HivekVM::execute32() {
+
 }
 
 void HivekVM::HivekVM::execute_rr() {

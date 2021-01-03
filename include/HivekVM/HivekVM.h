@@ -19,10 +19,14 @@ namespace HivekVM {
         void load_program(const char *path);
 
         void print_registers();
+        void print_stack();
 
     private:
-        void fetch_instruction();
-        void execute_instruction();
+        void fetch();
+        void execute();
+        void execute16();
+        void execute24();
+        void execute32();
         void execute_rr();
         void execute_ri();
 
@@ -40,12 +44,14 @@ namespace HivekVM {
         uint64_t get_immd16();
         uint64_t get_immd26();
 
+
+
     private:
         uint64_t regs[N_REGISTERS];
         uint64_t ip;
 
         uint32_t instruction;
-        uint32_t* program;
+        uint8_t* program;
         uint8_t* stack;
 
         std::map<int, std::string> imap;
